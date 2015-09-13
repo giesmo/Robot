@@ -3,7 +3,7 @@ import robocode.*;
 import java.awt.*;
 import java.awt.geom.Rectangle2D;
 
-public class Giedrius201509131347 extends AdvancedRobot {
+public class Giedrius extends AdvancedRobot {
     private int timeSinceLastScan = 4;
     private static double enemyAbsoluteBearing;
     private int moveDirection = 1;
