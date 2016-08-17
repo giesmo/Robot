@@ -1,0 +1,157 @@
+import robocode.*;
+
+import java.awt.*;
+import java.awt.geom.Rectangle2D;
+
+public class Giedrius extends AdvancedRobot {
+    private int timeSinceLastScan = 4;
+    private static double enemyAbsoluteBearing;
+    private int moveDirection = 1;
+    private int wallHits = 0;
+    private double attackAmplifier = 1.0;
+    private long fireTime = 0;
+
+    private static final int ACCURATE_SHOT_LIMIT = 400;
+    private static final int ORDINARY_MOVEMENT_RANGE = 100;
+    private static final int HP_ADVANTAGE_TO_ATTACK = 50;
+    private static final int ANGLE_90_DEGREES = 90;
+    private static final int ANGLE_45_DEGREES = 45;
+    private static final int ENEMY_LIMIT_FOR_AGGRESSIVE_MODE = 1;
+
+    private byte scanDirection = 1;
+
+    public void run() {
+        setAdjustRadarForRobotTurn(true);
+        setAdjustGunForRobotTurn(true);
+        setAdjustRadarForGunTurn(true);
+
+        setBodyColor(Color.BLACK);
+        setRadarColor(Color.BLACK);
+        setGunColor(Color.BLACK);
+        setBulletColor(Color.WHITE);
+        setScanColor(Color.BLACK);
+
+        turnLeft((getHeading() % ANGLE_90_DEGREES) + ANGLE_45_DEGREES);
+
+        while(true) {
+            avoidWalls();
+            doScanner();
+            execute();
+        }
+    }
+
+    public void onScannedRobot(ScannedRobotEvent e) {
+        if(getOthers() <= ENEMY_LIMIT_FOR_AGGRESSIVE_MODE) {
+            setTurnRight(e.getBearing());
+            attackAmplifier = 3.0;
+        }
+
+        scanDirection *= -1;
+
+        setTurnRadarRight((getHeading() - getRadarHeading() + e.getBearing()) * scanDirection);
+
+        if (getEnergy() - e.getEnergy() > HP_ADVANTAGE_TO_ATTACK && e.getDistance() < ORDINARY_MOVEMENT_RANGE) {
+            setAhead(e.getDistance());
+            setFire(Rules.MAX_BULLET_POWER);
+
+            timeSinceLastScan = 0;
+        }
+        else if(e.getDistance() < ACCURATE_SHOT_LIMIT) {
+            timeSinceLastScan = 0;
+
+            enemyAbsoluteBearing = getHeadingRadians() + e.getBearingRadians();
+
+            //setTurnGunRight(getHeading() - getGunHeading() + e.getBearing());
+
+            if(e.getDistance() > 20) {
+                setTurnRight(e.getBearing() + ANGLE_90_DEGREES - (15 * moveDirection * attackAmplifier));
+            }
+            else {
+                setTurnRight(e.getBearing() + ANGLE_90_DEGREES);
+            }
+
+            //setFire(ACCURATE_SHOT_LIMIT / e.getDistance());
+            doGun(e);
+            setAhead(ORDINARY_MOVEMENT_RANGE * moveDirection);
+        }
+        else {
+            setAhead(ORDINARY_MOVEMENT_RANGE * moveDirection);
+        }
+    }
+
+    public void onHitWall(HitWallEvent e){
+        wallHits++;
+
+        if(wallHits == 4) {
+            turnRight(ANGLE_45_DEGREES);
+            wallHits = 0;
+        }
+        else {
+            turnRight(ANGLE_90_DEGREES);
+        }
+    }
+
+    public void onBulletHit(BulletHitEvent e){
+        setAhead(ORDINARY_MOVEMENT_RANGE);
+    }
+
+    public void onHitRobot(HitRobotEvent e){
+        fire(Rules.MAX_BULLET_POWER);
+        turnRight(ANGLE_90_DEGREES);
+    }
+
+    private void doScanner() {
+        timeSinceLastScan++;
+
+        double radarOffset = Double.POSITIVE_INFINITY;
+
+        if(timeSinceLastScan < 3) {
+            radarOffset = robocode.util.Utils.normalRelativeAngle(getRadarHeadingRadians() - enemyAbsoluteBearing);
+            radarOffset += sign(radarOffset) * 0.02;
+        }
+
+        setTurnRadarLeftRadians(radarOffset);
+
+        adjustGunByRadar();
+    }
+
+    private int sign(double v) {
+        return v > 0 ? 1 : -1;
+    }
+
+    private void adjustGunByRadar() {
+        if (timeSinceLastScan < 3) {
+            setTurnGunLeftRadians((getGunHeadingRadians() - getRadarHeadingRadians()));
+        }
+        else {
+            setTurnGunRight(getHeading() - getGunHeading());
+        }
+    }
+
+    private void avoidWalls() {
+        if(getOthers() > ENEMY_LIMIT_FOR_AGGRESSIVE_MODE) {
+            double direction = 1;
+            double goalDirection = enemyAbsoluteBearing - Math.PI / 2 * direction;
+            Rectangle2D fieldRect = new Rectangle2D.Double(18, 18, getBattleFieldWidth() - getWidth(), getBattleFieldHeight() - getHeight());
+
+            while (!fieldRect.contains(getX() + Math.sin(goalDirection) * 120, getY() + Math.cos(goalDirection) * 120)) {
+                goalDirection += direction * .5;
+            }
+
+            double turn = robocode.util.Utils.normalRelativeAngle(goalDirection - getHeadingRadians());
+            setTurnRightRadians(turn);
+        }
+    }
+
+    private void doGun(ScannedRobotEvent e) {
+        if (fireTime == getTime() && getGunTurnRemaining() == 0) {
+            double bulletPower = ACCURATE_SHOT_LIMIT / e.getDistance();
+            bulletPower /= 100/getEnergy();
+            setFire(bulletPower*1.5);
+        }
+
+        setTurnGunRight(getHeading() - getGunHeading() + e.getBearing());
+        fireTime = getTime() + 1;
+    }
+
+}
